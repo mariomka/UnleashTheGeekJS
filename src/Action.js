@@ -40,7 +40,7 @@ Action.Move = class MoveAction extends Action {
 
 Action.Request = class RequestionAction extends Action {
 
-    /** @param {import("./Item")} item */
+    /** @param {number} item */
     constructor(item) {
         super();
         this.item = item;
