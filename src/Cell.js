@@ -6,6 +6,15 @@ class Cell {
         this.hole = false;
         this.ore = 0;
     }
+
+    /** @param {number} amount */
+    reduceOre(amount) {
+        this.ore = Math.max(0, this.ore - amount);
+    }
+
+    incrementOre() {
+        this.ore++;
+    }
 }
 
 let noCell = new Cell();

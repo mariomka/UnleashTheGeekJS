@@ -1,15 +1,8 @@
 const Constants = require("./Constants");
 
-class Item {
-    /** @param {number} typeId */
-    constructor(typeId) {
-        this.typeId = typeId;
-    }
-}
-
 module.exports = {
-    ORE:   new Item(Constants.TYPE_ORE),
-    TRAP:  new Item(Constants.TYPE_TRAP),
-    NONO:  new Item(Constants.TYPE_NONE),
-    RADAR: new Item(Constants.TYPE_RADAR),
+    ORE:   Constants.TYPE_ORE,
+    TRAP:  Constants.TYPE_TRAP,
+    NONE:  Constants.TYPE_NONE,
+    RADAR: Constants.TYPE_RADAR,
 }
