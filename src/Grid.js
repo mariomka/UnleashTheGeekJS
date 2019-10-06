@@ -1,4 +1,5 @@
 const Coord = require("./Coord");
+const Item = require("./Item");
 const ItemCoord = require("./ItemCoord");
 const PathNode = require("./PathNode");
 const Constants = require("./Constants");
@@ -17,25 +18,28 @@ module.exports = class Grid {
         this.width = width;
         this.height = height;
         
-        /** @type {Map<Coord, Cell>} */
-        this.cells = new Map();
+        /** @type {Cell[]} */
+        this.cells = [];
 
-        /** @type {Map<number, Set<import("./ItemCoord")>[]>} */
+        /** @type {Map<number, ItemCoord[][]>} */
         this.items = new Map();
 
-        /** @type {Set<import("./ItemCoord")>[]} */
+        /** @type {ItemCoord[][]} */
         this.traps = [];
-        /** @type {Set<import("./ItemCoord")>[]} */
+        /** @type {ItemCoord[][]} */
         this.radars = [];
 
+        this.items.set(Item.TRAP,  this.traps);
+        this.items.set(Item.RADAR, this.radars);
+
         for (let i = 0; i < playerCount; i++) {
-            this.radars.push(new Set());
-            this.traps.push(new Set());
+            this.radars.push([]);
+            this.traps.push([]);
         }
 
         for (let x = 0; x < this.width; x++) {
             for (let y = 0; y < this.height; y++) {
-                this.cells.set(new Coord(x, y), new Cell());
+                this.cells.push(new Cell(x, y));
             }
         }
     }
@@ -50,7 +54,7 @@ module.exports = class Grid {
         if (x instanceof Coord) {
             return this.get(x.x, x.y);
         } else { 
-            return this.cells.get(new Coord(x, y));
+            return this.cells.find(c => c.x === x && c.y === y) || Cell.NO_CELL;
         }
     }
 
@@ -72,8 +76,8 @@ module.exports = class Grid {
      */
     findPath(start, target, restricted) {
         let queue = new PriorityQueue(this.byDistanceTo(target));
-        /** @type {Set<Coord>} */
-        let computed = new Set();
+        /** @type {Coord[]} */
+        let computed = new [];
 
         /** @type {PathNode[]} */
         let closest = [];
@@ -86,7 +90,7 @@ module.exports = class Grid {
             /** @type {PathNode} */
             let current = queue.poll();
 
-            if (current.coord == target) {
+            if (current.coord.equals(target)) {
                 return this.unrollPath(current);
             } else {
                 let dist = current.coord.distanceTo(target);
@@ -100,9 +104,11 @@ module.exports = class Grid {
             if (current.steps < Constants.AGENTS_MOVE_DISTANCE) {
                 let neribours = this.getNeighbours(current.coord);
                 for (let neigh of neribours) {
-                    if (!restricted.includes(neigh) && !computed.has(neigh)) {
+                    if (!restricted.some(r => neigh.equals(r)) && 
+                        !computed.some(c => neigh.equals(c))) {
+                        
                         queue.add(new PathNode(neigh, current));
-                        computed.add(neigh);
+                        computed.push(neigh);
                     }
                 }
             }
@@ -150,7 +156,7 @@ module.exports = class Grid {
             if (!closest.length || closestBy > dist) {
                 closest = [neigh];
                 closestBy = dist;
-            } else if (closest.length && closestBy == dist) {
+            } else if (closest.length && closestBy === dist) {
                 closest.push(neigh);
             }
         }
@@ -159,12 +165,17 @@ module.exports = class Grid {
 
     /** @param {Coord} pos */
     hasTrap(pos) {
-        return this.traps.some(set => set.has(pos));
+        return this.traps.some(list => list.some(c => pos.equals(c)));
     }
 
     /** @param {Coord} pos */
     removeTrap(pos) {
-        this.traps.forEach(set => set.delete(pos));
+        this.traps.forEach(list => list.some((coord, index, array) => {
+            if (coord.equals(pos)) {
+                array.splice(index, 1);
+                return true;
+            }
+        }));
     }
 
     /**
@@ -176,7 +187,12 @@ module.exports = class Grid {
         let destroyed = false;
         for (let i = 0; i < this.radars.length; i++) {
             if (i != destroyer.index) {
-                destroyed |= this.radars[i].delete(pos);
+                destroyed |= this.radars[i].some((coord, index, array) => {
+                    if (coord.equals(pos)) {
+                        array.splice(index, 1);
+                        return true;
+                    }
+                });
             }
         }
         return destroyed;
@@ -189,7 +205,7 @@ module.exports = class Grid {
      * @param {import("./Player")} itemOwner 
      */
     insertItem(pos, item, itemOwner) {
-        this.getItems(item, itemOwner).add(new ItemCoord(pos.x, pos.y));
+        this.getItems(item, itemOwner).push(new ItemCoord(pos.x, pos.y));
     }
 
     getHQAccesses() {
@@ -206,7 +222,7 @@ module.exports = class Grid {
      * @param {import("./Player")} player 
      */
     isOreVisibleTo(x, y, player) {
-        return [...this.radars[player.index]].some(pos => Constants.EUCLIDEAN_RADAR ?
+        return this.radars[player.index].some(pos => Constants.EUCLIDEAN_RADAR ?
             pos.euclideanTo(x, y) <= Constants.RADAR_RANGE :
             pos.distanceTo(x, y)  <= Constants.RADAR_RANGE);
     }
@@ -225,18 +241,18 @@ module.exports = class Grid {
      * @param {number} range 
      */
     getCellsInRange(coord, range) {
-        /** @type {Set<Coord>} */
-        let result = Set();
+        /** @type {Coord[]} */
+        let result = [];
         /** @type {PathNode[]} */
         let queue = [];
 
         queue.push(new PathNode(coord));
         while(queue.length) {
             let e = queue.shift();
-            result.add(e.coord);
+            result.push(e.coord);
             if (e.steps < range) {
                 this.getNeighbours(e.coord).forEach(neigh => {
-                    if (!result.has(neigh)) {
+                    if (!result.some(c => c.equals(neigh))) {
                         queue.push(new PathNode(neigh, e));
                     }
                 });

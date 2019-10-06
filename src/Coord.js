@@ -1,5 +1,5 @@
 const PRIME = 31;
-const Constants = require("./Constants");
+let Constants;
 
 module.exports = class Coord {
 
@@ -9,6 +9,9 @@ module.exports = class Coord {
      * @param {number} y 
      */
     constructor(x, y) {
+        if (!Constants) {
+           Constants = require("./Constants");
+        }
         this.x = x;
         this.y = y;
     }
@@ -60,7 +63,8 @@ module.exports = class Coord {
     /**
      * Game distance
      * @param {Coord|number} x 
-     * @param {number} y 
+     * @param {number} y
+     * @return {number}
      */
     distanceTo(x, y) {
         if (x instanceof Coord) {
@@ -74,6 +78,11 @@ module.exports = class Coord {
     valueOf() {
         let result = PRIME + this.x;
         return PRIME * result + this.y;
+    }
+
+    /** @param {Coord} other */
+    equals(other) {
+        return this.valueOf() == other.valueOf();
     }
 
     toString() {

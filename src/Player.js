@@ -46,7 +46,15 @@ module.exports = class Player {
     }
 
     reset() {
-        // TODO
+        this.agents.forEach(a => a.reset());
+    }
+
+    scoreOre() {
+        this.ore++;
+    }
+
+    get score() {
+        return this.ore;
     }
 
 }

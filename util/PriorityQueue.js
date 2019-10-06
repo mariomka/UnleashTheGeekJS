@@ -1,8 +1,13 @@
+/**
+ * @template T
+ */
 module.exports = class PriorityQueue {
 
-    /** @param {((any) => number)} comparator */
+    /** 
+     * @param {((value: T) => number)} comparator 
+     */
     constructor(comparator) {
-        /** @type {{data: any, priority: number}[]} */
+        /** @type {{data: T, priority: number}[]} */
         this.items = [];
         this.comparator = comparator;
     }
