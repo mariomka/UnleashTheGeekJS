@@ -5,9 +5,11 @@ const CommandManager = require("./CommandManager");
 
 module.exports = class Referee extends EventEmitter {
 
-    constructor() {
+    /** @param {import("./Player")[]} players */
+    constructor(...players) {
         super();
         this.game = new Game();
+        this.game.players = players;
 
         this.game.init();
         this.game.initGameState();

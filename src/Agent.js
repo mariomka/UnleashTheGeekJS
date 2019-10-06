@@ -13,10 +13,9 @@ module.exports = class Agent {
     constructor(id, owner, pos) {
         this.id = id;
         this.owner = owner;
-        /** @type {import("./Coord")} */
-        this.pos = null;
+        this.pos = pos;
         this.action = Action.NONE;
-        this.initialPos = pos;
+        this.initialPos = pos.clone();
         this.inventory = Item.NONE;
         this.message = "";
         this.respawnIn = 0;

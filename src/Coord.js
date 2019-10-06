@@ -88,4 +88,8 @@ module.exports = class Coord {
     toString() {
         return `(${this.x}, ${this.y})`;
     }
+
+    clone() {
+        return new Coord(this.x, this.y);
+    }
 }

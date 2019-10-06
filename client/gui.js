@@ -7,6 +7,8 @@
 const Tile = require("./tile");
 const Coord = require("../src/Coord");
 
+/** @typedef {{pos: Coord, lastPos: Coord, item: number, lastItem: number, owner: number}} DisplayAgent */
+
 const OFFSET_X = 78  + Tile.SIZE / 2;
 const OFFSET_Y = 154 + Tile.SIZE / 2;
 const TOOLTIP_TEXT_PADDING = 5;
@@ -20,9 +22,9 @@ module.exports = class GUI {
 
         this.referee = referee;
 
-        /** @type {Object<string,PIXI.Sprite>} */
+        /** @type {Object<string,PIXI.Texture>} */
         this.elements = {};
-        /** @type {Object<string,PIXI.AnimatedSprite>} */
+        /** @type {Object<string,PIXI.Texture[]} */
         this.animations = {};
 
         this.width  = 1920;
@@ -35,6 +37,17 @@ module.exports = class GUI {
         this.yMin = OFFSET_Y;
         this.xMax = OFFSET_X + this.gameGrid.width  * Tile.SIZE;
         this.yMax = OFFSET_Y + this.gameGrid.height * Tile.SIZE;
+
+        /** @type {Object<string,DisplayAgent>} */
+        this.agents = {};
+
+        referee.on("turn", () => {
+            console.log(`Turn#${this.referee.turns} done`);
+            this.updateAgents();
+            this.updateAllCells();
+        });
+
+        window.game = this.game;
     }
 
     get gameGrid() {
@@ -43,17 +56,16 @@ module.exports = class GUI {
 
     /** @param {ElementName} name */
     getElement(name) {
-        return this.elements[name];
+        return new PIXI.Sprite(this.elements[name]);
     }
 
     /** @param {AnimationName} name */
     getAnimation(name) {
-        return this.animations[name];
+        return new PIXI.AnimatedSprite(this.animations[name]);
     }
 
-    get renderer() {
-        return this.app.renderer;
-    }
+    get renderer() { return this.app.renderer; }
+    get game() { return this.referee.game; }
 
     async init() {
         this.app = new PIXI.Application({
@@ -75,7 +87,7 @@ module.exports = class GUI {
 
         for (let k in elemTextures) {
             let texture = elemTextures[k];
-            this.elements[k] = new PIXI.Sprite(texture);
+            this.elements[k] = texture;
         }
 
         loader.add("sheet", "./assets/img/sprites.json");
@@ -96,7 +108,7 @@ module.exports = class GUI {
         }
 
         for (let key in textureArrays) {
-            this.animations[key] = new PIXI.AnimatedSprite(textureArrays[key]);
+            this.animations[key] = textureArrays[key];
         }
 
         loader.add("background", "./assets/img/Background.jpg");
@@ -136,6 +148,8 @@ module.exports = class GUI {
         for (let cell of this.referee.game.grid.cells) {
             this.addTile(cell);
         }
+
+        this.updateAgents();
 
         this.background.alpha = 0.8;
         this.background.interactive = true;
@@ -200,6 +214,57 @@ module.exports = class GUI {
 
         this.tooltip.pivot.set(x > this.xLimit ? this.tooltip.width  : 0, 0);
         this.tooltip.position.set(x, Math.min(y, this.yLimit));
+    }
+
+    updateAgents() {
+        
+        this.game.allAgents.forEach(agent => {
+            
+            let obj = this.agents[agent.id];
+            if (obj) {
+
+                obj.lastPos = obj.pos.clone();
+                obj.pos = agent.pos.clone();
+                obj.lastItem = obj.item;
+                obj.item = agent.inventory;
+
+            } else {
+
+                let sprite = this.getAnimation(agent.owner.index ? 
+                    "Bleu_Roule" : "Rouge_Roule");
+
+                sprite.pivot.set(Tile.SIZE / 2, Tile.SIZE / 2);
+
+                sprite.width = 1.2 * Tile.SIZE;
+                sprite.height = 1.2 * Tile.SIZE;
+
+                sprite.position.set(agent.pos.x * Tile.SIZE, 
+                    agent.pos.y * Tile.SIZE);
+
+                sprite.angle = 90;
+
+                this.tileContainer.addChild(sprite);
+
+                this.agents[agent.id] = {
+                    owner: agent.owner,
+                    lastPos: agent.pos.clone(),
+                    pos: agent.pos.clone(),
+                    item: agent.inventory,
+                    lastItem: agent.inventory,
+                    sprite
+                };
+                
+                sprite.play();
+            }
+        });
+
+        this.drawAgents(0);
+    }
+
+    drawAgents(delta) {
+        for (let id in this.agents) {
+
+        }
     }
 
     updateAllCells() {

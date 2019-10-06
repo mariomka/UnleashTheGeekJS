@@ -222,7 +222,8 @@ module.exports = class Game {
             available.push(i);
 
         available = shuffle(available);
-        for (let i = 0; i < spaces; i++) {
+        
+        for (let i = 0; i < Constants.AGENTS_PER_PLAYER; i++) {
             let y = available.length ? available.shift() : randomInt(spaces);
 
             for (let player of this.players) {
@@ -243,7 +244,7 @@ module.exports = class Game {
         this.decrementCooldowns();
 
         this.resolveMoves();
-        this.resolveDelievers();
+        this.resolveDelivers();
         this.respawnDeadAgents();
     }
 

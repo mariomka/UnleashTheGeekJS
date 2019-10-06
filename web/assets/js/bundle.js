@@ -533,6 +533,8 @@ function functionBindPolyfill(context) {
 const Tile = require("./tile");
 const Coord = require("../src/Coord");
 
+/** @typedef {{pos: Coord, lastPos: Coord, item: number, lastItem: number, owner: number}} DisplayAgent */
+
 const OFFSET_X = 78  + Tile.SIZE / 2;
 const OFFSET_Y = 154 + Tile.SIZE / 2;
 const TOOLTIP_TEXT_PADDING = 5;
@@ -546,9 +548,9 @@ module.exports = class GUI {
 
         this.referee = referee;
 
-        /** @type {Object<string,PIXI.Sprite>} */
+        /** @type {Object<string,PIXI.Texture>} */
         this.elements = {};
-        /** @type {Object<string,PIXI.AnimatedSprite>} */
+        /** @type {Object<string,PIXI.Texture[]} */
         this.animations = {};
 
         this.width  = 1920;
@@ -561,6 +563,13 @@ module.exports = class GUI {
         this.yMin = OFFSET_Y;
         this.xMax = OFFSET_X + this.gameGrid.width  * Tile.SIZE;
         this.yMax = OFFSET_Y + this.gameGrid.height * Tile.SIZE;
+
+        /** @type {Object<string,DisplayAgent>} */
+        this.agents = {};
+
+        referee.on("turn", () => this.updateAllCells());
+
+        window.game = this.game;
     }
 
     get gameGrid() {
@@ -569,17 +578,16 @@ module.exports = class GUI {
 
     /** @param {ElementName} name */
     getElement(name) {
-        return this.elements[name];
+        return new PIXI.Sprite(this.elements[name]);
     }
 
     /** @param {AnimationName} name */
     getAnimation(name) {
-        return this.animations[name];
+        return new PIXI.AnimatedSprite(this.animations[name]);
     }
 
-    get renderer() {
-        return this.app.renderer;
-    }
+    get renderer() { return this.app.renderer; }
+    get game() { return this.referee.game; }
 
     async init() {
         this.app = new PIXI.Application({
@@ -601,7 +609,7 @@ module.exports = class GUI {
 
         for (let k in elemTextures) {
             let texture = elemTextures[k];
-            this.elements[k] = new PIXI.Sprite(texture);
+            this.elements[k] = texture;
         }
 
         loader.add("sheet", "./assets/img/sprites.json");
@@ -622,7 +630,7 @@ module.exports = class GUI {
         }
 
         for (let key in textureArrays) {
-            this.animations[key] = new PIXI.AnimatedSprite(textureArrays[key]);
+            this.animations[key] = textureArrays[key];
         }
 
         loader.add("background", "./assets/img/Background.jpg");
@@ -662,6 +670,8 @@ module.exports = class GUI {
         for (let cell of this.referee.game.grid.cells) {
             this.addTile(cell);
         }
+
+        this.updateAgents();
 
         this.background.alpha = 0.8;
         this.background.interactive = true;
@@ -728,6 +738,57 @@ module.exports = class GUI {
         this.tooltip.position.set(x, Math.min(y, this.yLimit));
     }
 
+    updateAgents() {
+        
+        this.game.allAgents.forEach(agent => {
+            
+            let obj = this.agents[agent.id];
+            if (obj) {
+
+                obj.lastPos = obj.pos.clone();
+                obj.pos = agent.pos.clone();
+                obj.lastItem = obj.item;
+                obj.item = agent.inventory;
+
+            } else {
+
+                let sprite = this.getAnimation(agent.owner.index ? 
+                    "Bleu_Roule" : "Rouge_Roule");
+
+                sprite.pivot.set(Tile.SIZE / 2, Tile.SIZE / 2);
+
+                sprite.width = 1.2 * Tile.SIZE;
+                sprite.height = 1.2 * Tile.SIZE;
+
+                sprite.position.set(agent.pos.x * Tile.SIZE, 
+                    agent.pos.y * Tile.SIZE);
+
+                sprite.angle = 90;
+
+                this.tileContainer.addChild(sprite);
+
+                this.agents[agent.id] = {
+                    owner: agent.owner,
+                    lastPos: agent.pos.clone(),
+                    pos: agent.pos.clone(),
+                    item: agent.inventory,
+                    lastItem: agent.inventory,
+                    sprite
+                };
+                
+                sprite.play();
+            }
+        });
+
+        this.drawAgents(0);
+    }
+
+    drawAgents(delta) {
+        for (let id in this.agents) {
+
+        }
+    }
+
     updateAllCells() {
         this.tiles.forEach(tile => tile.update());
     }
@@ -735,9 +796,15 @@ module.exports = class GUI {
 },{"../src/Coord":10,"./tile":4}],3:[function(require,module,exports){
 const GUI = require("./gui");
 const Referee = require("../src/Referee");
+const Player = require("../src/Player");
 
 window.onload = async () => {
-    let referee = new Referee();
+
+    
+    let p1 = new Player();
+    let p2 = new Player();
+    
+    let referee = new Referee(p1, p2);
 
     let gui = new GUI(referee);
 
@@ -745,7 +812,7 @@ window.onload = async () => {
 
     // referee.start();
 }
-},{"../src/Referee":16,"./gui":2}],4:[function(require,module,exports){
+},{"../src/Player":16,"../src/Referee":17,"./gui":2}],4:[function(require,module,exports){
 const TILE_SIZE = 61;
 const Coord = require("../src/Coord");
 
@@ -903,10 +970,9 @@ module.exports = class Agent {
     constructor(id, owner, pos) {
         this.id = id;
         this.owner = owner;
-        /** @type {import("./Coord")} */
-        this.pos = null;
+        this.pos = pos;
         this.action = Action.NONE;
-        this.initialPos = pos;
+        this.initialPos = pos.clone();
         this.inventory = Item.NONE;
         this.message = "";
         this.respawnIn = 0;
@@ -1206,6 +1272,10 @@ module.exports = class Coord {
     toString() {
         return `(${this.x}, ${this.y})`;
     }
+
+    clone() {
+        return new Coord(this.x, this.y);
+    }
 }
 },{"./Constants":9}],11:[function(require,module,exports){
 const Grid = require("./Grid");
@@ -1432,7 +1502,8 @@ module.exports = class Game {
             available.push(i);
 
         available = shuffle(available);
-        for (let i = 0; i < spaces; i++) {
+        
+        for (let i = 0; i < Constants.AGENTS_PER_PLAYER; i++) {
             let y = available.length ? available.shift() : randomInt(spaces);
 
             for (let player of this.players) {
@@ -1453,7 +1524,7 @@ module.exports = class Game {
         this.decrementCooldowns();
 
         this.resolveMoves();
-        this.resolveDelievers();
+        this.resolveDelivers();
         this.respawnDeadAgents();
     }
 
@@ -1739,7 +1810,7 @@ module.exports = class Game {
     }
 }
 
-},{"../util/JavaFunctions":17,"./Action":5,"./Agent":6,"./Constants":9,"./Coord":10,"./Grid":12,"./Item":13}],12:[function(require,module,exports){
+},{"../util/JavaFunctions":18,"./Action":5,"./Agent":6,"./Constants":9,"./Coord":10,"./Grid":12,"./Item":13}],12:[function(require,module,exports){
 const Coord = require("./Coord");
 const Item = require("./Item");
 const ItemCoord = require("./ItemCoord");
@@ -2021,7 +2092,7 @@ module.exports = class Grid {
         return result;
     }
 }
-},{"../util/PriorityQueue":18,"./Cell":7,"./Constants":9,"./Coord":10,"./Item":13,"./ItemCoord":14,"./PathNode":15}],13:[function(require,module,exports){
+},{"../util/PriorityQueue":19,"./Cell":7,"./Constants":9,"./Coord":10,"./Item":13,"./ItemCoord":14,"./PathNode":15}],13:[function(require,module,exports){
 const Constants = require("./Constants");
 
 module.exports = {
@@ -2072,6 +2143,81 @@ module.exports = class PathNode {
     }
 }
 },{"./Coord":10}],16:[function(require,module,exports){
+const Item = require("./Item");
+const Constants = require("./Constants");
+let index = 0;
+
+module.exports = class Player {
+    
+    constructor() {
+
+        this.index = index++;
+        this.ore = 0;
+
+        /** @type {import("./Agent")[]} */
+        this.agents = [];
+
+        /** @type {Object<number, number} */
+        this.cooldowns = {};
+
+        this.cooldowns[Item.TRAP]  = 0;
+        this.cooldowns[Item.RADAR] = 0;
+
+        /** @type {Object<number, number} */
+        this.cooldownTimes = {};
+        
+        this.cooldownTimes[Item.TRAP]  = Constants.TRAP_COOLDOWN;
+        this.cooldownTimes[Item.RADAR] = Constants.RADAR_COOLDOWN;
+
+        /** @type {string[]} */
+        this.inputs = [];
+        /** @type {string[]} */
+        this.outputs = [];
+    }
+
+    /** @param {import("./Agent")} agent */
+    addAgent(agent) {
+        this.agents.push(agent);
+    }
+
+    decrementCooldowns() {
+        for (let k in this.cooldowns) {
+            this.cooldowns[k] && this.cooldowns[k]--;
+        }
+    }
+
+    /** @param {number} item */
+    startCooldown(item) {
+        this.cooldowns[item] = this.cooldownTimes[item];
+    }
+
+    get expectedOutputLines() {
+        return this.agents.length;
+    }
+
+    reset() {
+        this.agents.forEach(a => a.reset());
+    }
+
+    scoreOre() {
+        this.ore++;
+    }
+
+    get score() {
+        return this.ore;
+    }
+
+    /** @param {string} line */
+    sendInputLine(line) {
+        this.inputs.push(line);
+    }
+
+    execute() {
+
+    }
+
+}
+},{"./Constants":9,"./Item":13}],17:[function(require,module,exports){
 const { EventEmitter } = require("events");
 
 const Game = require("./Game");
@@ -2079,9 +2225,11 @@ const CommandManager = require("./CommandManager");
 
 module.exports = class Referee extends EventEmitter {
 
-    constructor() {
+    /** @param {import("./Player")[]} players */
+    constructor(...players) {
         super();
         this.game = new Game();
+        this.game.players = players;
 
         this.game.init();
         this.game.initGameState();
@@ -2128,7 +2276,7 @@ module.exports = class Referee extends EventEmitter {
         }
     }
 }
-},{"./CommandManager":8,"./Game":11,"events":1}],17:[function(require,module,exports){
+},{"./CommandManager":8,"./Game":11,"events":1}],18:[function(require,module,exports){
 module.exports = {
 
     /** 
@@ -2167,7 +2315,7 @@ module.exports = {
         return lists.map(list => list.length).sort((a, b) => b - a)[0];
     }
 }
-},{}],18:[function(require,module,exports){
+},{}],19:[function(require,module,exports){
 /**
  * @template T
  */

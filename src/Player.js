@@ -1,12 +1,12 @@
 const Item = require("./Item");
 const Constants = require("./Constants");
+let index = 0;
 
 module.exports = class Player {
     
-    /** @param {number} index */
-    constructor(index) {
+    constructor() {
 
-        this.index = index;
+        this.index = index++;
         this.ore = 0;
 
         /** @type {import("./Agent")[]} */
