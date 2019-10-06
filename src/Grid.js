@@ -165,7 +165,13 @@ module.exports = class Grid {
 
     /** @param {Coord} pos */
     hasTrap(pos) {
-        return this.traps.some(list => list.some(c => pos.equals(c)));
+        for (let index in this.traps) {
+            let trapList = this.traps[index];
+            for (let trap of trapList) {
+                if (trap.equals(pos))
+                    return [index, trap];
+            }
+        }
     }
 
     /** @param {Coord} pos */
@@ -176,6 +182,17 @@ module.exports = class Grid {
                 return true;
             }
         }));
+    }
+
+    /** @param {Coord} pos */
+    hasRadar(pos) {
+        for (let index in this.radars) {
+            let radarList = this.radars[index];
+            for (let radar of radarList) {
+                if (radar.equals(pos))
+                    return [~~index, radar];
+            }
+        }
     }
 
     /**

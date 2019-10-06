@@ -1,0 +1,14 @@
+{
+  "name": "amadues",
+  "version": "1.0.0",
+  "description": "",
+  "main": "web.js",
+  "scripts": {
+    "bundle": "browserify client/main.js -o web/assets/js/bundle.js"
+  },
+  "author": "Yuu6883",
+  "license": "MIT",
+  "dependencies": {
+    "pixi.js": "^5.1.5"
+  }
+}

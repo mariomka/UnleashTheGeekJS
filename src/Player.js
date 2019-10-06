@@ -23,6 +23,11 @@ module.exports = class Player {
         
         this.cooldownTimes[Item.TRAP]  = Constants.TRAP_COOLDOWN;
         this.cooldownTimes[Item.RADAR] = Constants.RADAR_COOLDOWN;
+
+        /** @type {string[]} */
+        this.inputs = [];
+        /** @type {string[]} */
+        this.outputs = [];
     }
 
     /** @param {import("./Agent")} agent */
@@ -55,6 +60,15 @@ module.exports = class Player {
 
     get score() {
         return this.ore;
+    }
+
+    /** @param {string} line */
+    sendInputLine(line) {
+        this.inputs.push(line);
+    }
+
+    execute() {
+
     }
 
 }

@@ -1,7 +1,7 @@
-const PLAYER_MOVE_PATTERN = /^MOVE\s+(?<x>-?\d+)\s+(?<y>-?\d+)(?:\s+(?<message>.+))?\s*$/i;
-const PLAYER_INTERACT_PATTERN = /^INTERACT|DIG)\s+(?<x>-?\d+)\s+(?<y>-?\d+)(?:\s+(?<message>.+))?\s*$/i;
-const PLAYER_REQUEST_PATTERN = /^REQUEST\s+(?<item>(?:TRAP|RADAR))(?:\s+(?<message>.+))?\s*$/i;
 const PLAYER_WAIT_PATTERN = /^WAIT(?:\s+(?<message>.+))?\s*$/i;
+const PLAYER_MOVE_PATTERN = /^MOVE\s+(?<x>-?\d+)\s+(?<y>-?\d+)(?:\s+(?<message>.+))?\s*$/i;
+const PLAYER_REQUEST_PATTERN = /^REQUEST\s+(?<item>(?:TRAP|RADAR))(?:\s+(?<message>.+))?\s*$/i;
+const PLAYER_INTERACT_PATTERN = /^(INTERACT|DIG)\s+(?<x>-?\d+)\s+(?<y>-?\d+)(?:\s+(?<message>.+))?\s*$/i;
 // const EXPECTED = "DIG <x> <y> | REQUEST <item> | MOVE <x> <y> | WAIT";
 
 const Action = require("./Action");

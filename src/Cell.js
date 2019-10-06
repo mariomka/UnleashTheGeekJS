@@ -11,6 +11,7 @@ class Cell {
         this.valid = true;
         this.accessToHQ = false;
         this.hole = false;
+        /** @type {number} */
         this.ore = 0;
     }
 
