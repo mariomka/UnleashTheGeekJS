@@ -1320,7 +1320,7 @@ module.exports = class Game {
         let cellCount = Constants.MAP_WIDTH * Constants.MAP_HEIGHT;
         let clustersMin = Math.max(1, ~~(cellCount * Constants.MAP_CLUSTER_DISTRIBUTION_MIN));
         let clustersMax = Math.max(clustersMin, ~~(cellCount * Constants.MAP_CLUSTER_DISTRIBUTION_MAX));
-        let oreClusterCount = randomInt(clustersMin, clustersMax);
+        let oreClusterCount = randomInt(clustersMin, clustersMax + 1);
 
         let padding = {
             left: 3,
@@ -1341,8 +1341,8 @@ module.exports = class Game {
                 let clusterCenter = new Coord(x, y);
                 for (let i = 0; i < Constants.MAP_CLUSTER_SIZE; i++) {
                     for (let j = 0; j < Constants.MAP_CLUSTER_SIZE; j++) {
-                        x = clusterCenter.x + ~~(i - Constants.MAP_CLUSTER_SIZE / 2);
-                        y = clusterCenter.y + ~~(j - Constants.MAP_CLUSTER_SIZE / 2);
+                        x = clusterCenter.x + i - ~~(Constants.MAP_CLUSTER_SIZE / 2);
+                        y = clusterCenter.y + j - ~~(Constants.MAP_CLUSTER_SIZE / 2);
 
                         let chances = clusterCenter.manhattanTo(x, y) * 2 + 1;
                         let hit = randomInt(chances);
