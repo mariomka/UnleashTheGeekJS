@@ -8,17 +8,24 @@ module.exports = class Referee extends EventEmitter {
     /** @param {import("./Player")[]} players */
     constructor(...players) {
         super();
+        this.players = players;
+        this.gap = 1000;
+        this.maxTurns = 200;
+    }
+
+    reset() {
+
         this.game = new Game();
-        this.game.players = players;
+        this.game.players = this.players;
 
         this.game.init();
         this.game.initGameState();
 
         this.loop = false;
         this.turns = 0;
-        this.gap = 1000;
-        this.maxTurns = 200;
     }
+
+    get grid() { return this.game.grid }
 
     async start() {
         if (this.game.players.length !== 2)

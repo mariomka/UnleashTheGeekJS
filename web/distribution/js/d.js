@@ -524,390 +524,348 @@ function functionBindPolyfill(context) {
 }
 
 },{}],2:[function(require,module,exports){
-/** @typedef {"Bleu_Creuse"| "Bleu_Deterre"| "Bleu_Enterre"| "Bleu_Roule"| 
-    "Piege"| "Piege_Explosion"| "Radar"| "Rouge_Creuse"| "Rouge_Deterre"| "Rouge_Enterre"| "Rouge_Roule"} AnimationName */
+// shim for using process in browser
+var process = module.exports = {};
 
-/** @typedef {"Bras_Robot"|"Cristal"|"Cristal_2"|"Cristal_2_shadow"|"Cristal_3"|"Cristal_3_shadow"|"Hud_dessus_left"|
-    "Hud_dessus_right"|"HUD_Piege_Off"|"HUD_Piege_Ok"|"HUD_Radar_Off"|"HUD_Radar_Ok"|"Piege"|"Piege_2"|"Radar"|"Radar_2"|"Terre"} ElementName */
+// cached from whatever global is present so that test runners that stub it
+// don't break things.  But we need to wrap it in a try catch in case it is
+// wrapped in strict mode code which doesn't define any globals.  It's inside a
+// function because try/catches deoptimize in certain engines.
 
-const Tile = require("./tile");
-const Coord = require("../src/Coord");
+var cachedSetTimeout;
+var cachedClearTimeout;
 
-/** @typedef {{pos: Coord, lastPos: Coord, item: number, lastItem: number, owner: number}} DisplayAgent */
-
-const OFFSET_X = 78  + Tile.SIZE / 2;
-const OFFSET_Y = 154 + Tile.SIZE / 2;
-const TOOLTIP_TEXT_PADDING = 5;
-const MOUSE_OFFSET_X = 15;
-const MOUSE_OFFSET_Y = 25;
-
-module.exports = class GUI {
-
-    /** @param {import("../src/Referee")} referee */
-    constructor(referee) {
-
-        this.referee = referee;
-
-        /** @type {Object<string,PIXI.Texture>} */
-        this.elements = {};
-        /** @type {Object<string,PIXI.Texture[]} */
-        this.animations = {};
-
-        this.width  = 1920;
-        this.height = 1080;
-
-        /** @type {Tile[]} */
-        this.tiles = [];
-
-        this.xMin = OFFSET_X;
-        this.yMin = OFFSET_Y;
-        this.xMax = OFFSET_X + this.gameGrid.width  * Tile.SIZE;
-        this.yMax = OFFSET_Y + this.gameGrid.height * Tile.SIZE;
-
-        /** @type {Object<string,DisplayAgent>} */
-        this.agents = {};
-
-        referee.on("turn", () => {
-            console.log(`Turn#${this.referee.turns} done`);
-            this.updateAgents();
-            this.updateAllCells();
-        });
-
-        window.game = this.game;
-    }
-
-    get gameGrid() {
-        return this.referee.game.grid;
-    }
-
-    /** @param {ElementName} name */
-    getElement(name) {
-        return new PIXI.Sprite(this.elements[name]);
-    }
-
-    /** @param {AnimationName} name */
-    getAnimation(name) {
-        return new PIXI.AnimatedSprite(this.animations[name]);
-    }
-
-    get renderer() { return this.app.renderer; }
-    get game() { return this.referee.game; }
-
-    async init() {
-        this.app = new PIXI.Application({
-            width: this.width,
-            height: this.height,
-            antialias: true
-        });
-
-        this.renderer.plugins.interaction.moveWhenInside = true;
-
-        document.body.appendChild(this.app.view);
-
-        const loader = new PIXI.Loader();
-        loader.add("elems", "./assets/img/elems.json");
-        
-        await new Promise(resolve => loader.load(resolve));
-
-        let elemTextures = loader.resources.elems.textures;
-
-        for (let k in elemTextures) {
-            let texture = elemTextures[k];
-            this.elements[k] = texture;
-        }
-
-        loader.add("sheet", "./assets/img/sprites.json");
-        
-        await new Promise(resolve => loader.load(resolve));
-
-        let sheet = loader.resources.sheet.textures;
-
-        /** @type {Object<string,PIXI.Texture[]} */
-        let textureArrays = {};
-        for (let k in sheet) {
-            let key = k.replace(/\d/g, "");
-            if (!textureArrays[key])
-                textureArrays[key] = [];
-            
-            let texture = sheet[k];
-            textureArrays[key].push(texture);
-        }
-
-        for (let key in textureArrays) {
-            this.animations[key] = textureArrays[key];
-        }
-
-        loader.add("background", "./assets/img/Background.jpg");
-        loader.add("hud_left", "./assets/img/Hud_left.png");
-        loader.add("hud_top", "./assets/img/Hud_top.png");
-        
-        await new Promise(resolve => loader.load(resolve));
-
-        this.background = new PIXI.Sprite(loader.resources.background.texture);
-        this.hud_left   = new PIXI.Sprite(loader.resources.hud_left.texture);
-        this.hud_top    = new PIXI.Sprite(loader.resources.hud_top.texture);
-
-        this.tooltip = new PIXI.Graphics();
-        this.tooltip.beginFill(0, .75);
-        this.tooltip.drawRect(0, 0, 100, 120);
-        this.tooltip.endFill();
-        this.tooltip.zIndex = 10;
-        this.tooltipText = new PIXI.Text("", { fontFamily : 'Arial', fontSize: 24, fill: 0xffffff, align: 'left' });
-        this.tooltipText.position.set(TOOLTIP_TEXT_PADDING, TOOLTIP_TEXT_PADDING);
-        this.tooltip.addChild(this.tooltipText);
-
-        this.tooltip.alpha = 0;
-        this.tooltipText.alpha = 0;
-
-        this.app.stage.sortableChildren = true;
-        this.app.stage.addChild(this.tooltip);
-
-        this.setupStage();
-    }
-
-    setupStage() {
-        this.app.stage.addChild(this.background, this.hud_left, this.hud_top);
-        this.tileContainer = new PIXI.Container();
-        this.tileContainer.position.set(OFFSET_X, OFFSET_Y);
-        this.app.stage.addChild(this.tileContainer);
-
-        for (let cell of this.referee.game.grid.cells) {
-            this.addTile(cell);
-        }
-
-        this.updateAgents();
-
-        this.background.alpha = 0.8;
-        this.background.interactive = true;
-        this.background.hitArea = new PIXI.Rectangle(0, 0, this.background.width, this.background.height);
-        this.background.on("mouseover", event => {
-            if (event.data.global.x < this.xMin || event.data.global.y < this.yMin ||
-                event.data.global.x < this.xMax || event.data.global.y > this.yMax) {
-                this.tooltip.alpha = 0;
-                this.tooltipText.alpha = 0;
-            } else {
-                this.tooltip.alpha = 1;
-                this.tooltipText.alpha = 1;
-            }
-        });
-    }
-
-    /** @param {import("../src/Cell")} cell */
-    addTile(cell) {
-        this.tiles.push(new Tile(this, cell));
-    }
-
-    get xLimit() {
-        return this.referee.game.grid.width * Tile.SIZE + OFFSET_X - this.tooltip.width;
-    }
-
-    get yLimit() {
-        return this.referee.game.grid.height * Tile.SIZE + OFFSET_Y - this.tooltip.height;
-    }
-
-    /**
-     * @param {Tile} tile 
-     * @param {number} x 
-     * @param {number} y 
-     */
-    tileover(tile, x, y) {
-
-        x += MOUSE_OFFSET_X;
-        y += MOUSE_OFFSET_Y;
-
-        this.tooltip.alpha = 1;
-        this.tooltipText.alpha = 1;
-        this.tooltipText.text = `x: ${tile.x}\ny: ${tile.y}\nore: ${tile.cell.ore}`;
-
-        let radarResult = this.referee.game.grid.hasRadar(new Coord(tile.x, tile.y));
-        if (radarResult) {
-            this.tooltipText.text += `\nRADAR (${["blue", "red"][radarResult[0]]} player)`;
+function defaultSetTimout() {
+    throw new Error('setTimeout has not been defined');
+}
+function defaultClearTimeout () {
+    throw new Error('clearTimeout has not been defined');
+}
+(function () {
+    try {
+        if (typeof setTimeout === 'function') {
+            cachedSetTimeout = setTimeout;
         } else {
-            let trapResult = this.referee.game.grid.hasTrap(new Coord(tile.x, tile.y));
-
-            if (trapResult)
-                this.tooltipText.text += `\nTRAP (${["blue", "red"][trapResult[o]]} player)`;
+            cachedSetTimeout = defaultSetTimout;
         }
-
-        this.tooltipText.calculateBounds();
-
-        this.tooltip.clear();
-        this.tooltip.beginFill(0, .75);
-        this.tooltip.drawRect(0, 0, this.tooltipText.width + 2 * TOOLTIP_TEXT_PADDING, 
-            this.tooltipText.height + 2 * TOOLTIP_TEXT_PADDING);
-        this.tooltip.endFill();
-        this.tooltip.calculateBounds();
-
-        this.tooltip.pivot.set(x > this.xLimit ? this.tooltip.width  : 0, 0);
-        this.tooltip.position.set(x, Math.min(y, this.yLimit));
+    } catch (e) {
+        cachedSetTimeout = defaultSetTimout;
     }
-
-    updateAgents() {
-        
-        this.game.allAgents.forEach(agent => {
-            
-            let obj = this.agents[agent.id];
-            if (obj) {
-
-                obj.lastPos = obj.pos.clone();
-                obj.pos = agent.pos.clone();
-                obj.lastItem = obj.item;
-                obj.item = agent.inventory;
-
-            } else {
-
-                let sprite = this.getAnimation(agent.owner.index ? 
-                    "Bleu_Roule" : "Rouge_Roule");
-
-                sprite.pivot.set(Tile.SIZE / 2, Tile.SIZE / 2);
-
-                sprite.width = 1.2 * Tile.SIZE;
-                sprite.height = 1.2 * Tile.SIZE;
-
-                sprite.position.set(agent.pos.x * Tile.SIZE, 
-                    agent.pos.y * Tile.SIZE);
-
-                sprite.angle = 90;
-
-                this.tileContainer.addChild(sprite);
-
-                this.agents[agent.id] = {
-                    owner: agent.owner,
-                    lastPos: agent.pos.clone(),
-                    pos: agent.pos.clone(),
-                    item: agent.inventory,
-                    lastItem: agent.inventory,
-                    sprite
-                };
-                
-                sprite.play();
-            }
-        });
-
-        this.drawAgents(0);
+    try {
+        if (typeof clearTimeout === 'function') {
+            cachedClearTimeout = clearTimeout;
+        } else {
+            cachedClearTimeout = defaultClearTimeout;
+        }
+    } catch (e) {
+        cachedClearTimeout = defaultClearTimeout;
     }
-
-    drawAgents(delta) {
-        for (let id in this.agents) {
-
+} ())
+function runTimeout(fun) {
+    if (cachedSetTimeout === setTimeout) {
+        //normal enviroments in sane situations
+        return setTimeout(fun, 0);
+    }
+    // if setTimeout wasn't available but was latter defined
+    if ((cachedSetTimeout === defaultSetTimout || !cachedSetTimeout) && setTimeout) {
+        cachedSetTimeout = setTimeout;
+        return setTimeout(fun, 0);
+    }
+    try {
+        // when when somebody has screwed with setTimeout but no I.E. maddness
+        return cachedSetTimeout(fun, 0);
+    } catch(e){
+        try {
+            // When we are in I.E. but the script has been evaled so I.E. doesn't trust the global object when called normally
+            return cachedSetTimeout.call(null, fun, 0);
+        } catch(e){
+            // same as above but when it's a version of I.E. that must have the global object for 'this', hopfully our context correct otherwise it will throw a global error
+            return cachedSetTimeout.call(this, fun, 0);
         }
     }
 
-    updateAllCells() {
-        this.tiles.forEach(tile => tile.update());
+
+}
+function runClearTimeout(marker) {
+    if (cachedClearTimeout === clearTimeout) {
+        //normal enviroments in sane situations
+        return clearTimeout(marker);
+    }
+    // if clearTimeout wasn't available but was latter defined
+    if ((cachedClearTimeout === defaultClearTimeout || !cachedClearTimeout) && clearTimeout) {
+        cachedClearTimeout = clearTimeout;
+        return clearTimeout(marker);
+    }
+    try {
+        // when when somebody has screwed with setTimeout but no I.E. maddness
+        return cachedClearTimeout(marker);
+    } catch (e){
+        try {
+            // When we are in I.E. but the script has been evaled so I.E. doesn't  trust the global object when called normally
+            return cachedClearTimeout.call(null, marker);
+        } catch (e){
+            // same as above but when it's a version of I.E. that must have the global object for 'this', hopfully our context correct otherwise it will throw a global error.
+            // Some versions of I.E. have different rules for clearTimeout vs setTimeout
+            return cachedClearTimeout.call(this, marker);
+        }
+    }
+
+
+
+}
+var queue = [];
+var draining = false;
+var currentQueue;
+var queueIndex = -1;
+
+function cleanUpNextTick() {
+    if (!draining || !currentQueue) {
+        return;
+    }
+    draining = false;
+    if (currentQueue.length) {
+        queue = currentQueue.concat(queue);
+    } else {
+        queueIndex = -1;
+    }
+    if (queue.length) {
+        drainQueue();
     }
 }
-},{"../src/Coord":10,"./tile":4}],3:[function(require,module,exports){
-const GUI = require("./gui");
+
+function drainQueue() {
+    if (draining) {
+        return;
+    }
+    var timeout = runTimeout(cleanUpNextTick);
+    draining = true;
+
+    var len = queue.length;
+    while(len) {
+        currentQueue = queue;
+        queue = [];
+        while (++queueIndex < len) {
+            if (currentQueue) {
+                currentQueue[queueIndex].run();
+            }
+        }
+        queueIndex = -1;
+        len = queue.length;
+    }
+    currentQueue = null;
+    draining = false;
+    runClearTimeout(timeout);
+}
+
+process.nextTick = function (fun) {
+    var args = new Array(arguments.length - 1);
+    if (arguments.length > 1) {
+        for (var i = 1; i < arguments.length; i++) {
+            args[i - 1] = arguments[i];
+        }
+    }
+    queue.push(new Item(fun, args));
+    if (queue.length === 1 && !draining) {
+        runTimeout(drainQueue);
+    }
+};
+
+// v8 likes predictible objects
+function Item(fun, array) {
+    this.fun = fun;
+    this.array = array;
+}
+Item.prototype.run = function () {
+    this.fun.apply(null, this.array);
+};
+process.title = 'browser';
+process.browser = true;
+process.env = {};
+process.argv = [];
+process.version = ''; // empty string to avoid regexp issues
+process.versions = {};
+
+function noop() {}
+
+process.on = noop;
+process.addListener = noop;
+process.once = noop;
+process.off = noop;
+process.removeListener = noop;
+process.removeAllListeners = noop;
+process.emit = noop;
+process.prependListener = noop;
+process.prependOnceListener = noop;
+
+process.listeners = function (name) { return [] }
+
+process.binding = function (name) {
+    throw new Error('process.binding is not supported');
+};
+
+process.cwd = function () { return '/' };
+process.chdir = function (dir) {
+    throw new Error('process.chdir is not supported');
+};
+process.umask = function() { return 0; };
+
+},{}],3:[function(require,module,exports){
+(function (setImmediate,clearImmediate){
+var nextTick = require('process/browser.js').nextTick;
+var apply = Function.prototype.apply;
+var slice = Array.prototype.slice;
+var immediateIds = {};
+var nextImmediateId = 0;
+
+// DOM APIs, for completeness
+
+exports.setTimeout = function() {
+  return new Timeout(apply.call(setTimeout, window, arguments), clearTimeout);
+};
+exports.setInterval = function() {
+  return new Timeout(apply.call(setInterval, window, arguments), clearInterval);
+};
+exports.clearTimeout =
+exports.clearInterval = function(timeout) { timeout.close(); };
+
+function Timeout(id, clearFn) {
+  this._id = id;
+  this._clearFn = clearFn;
+}
+Timeout.prototype.unref = Timeout.prototype.ref = function() {};
+Timeout.prototype.close = function() {
+  this._clearFn.call(window, this._id);
+};
+
+// Does not start the time, just sets up the members needed.
+exports.enroll = function(item, msecs) {
+  clearTimeout(item._idleTimeoutId);
+  item._idleTimeout = msecs;
+};
+
+exports.unenroll = function(item) {
+  clearTimeout(item._idleTimeoutId);
+  item._idleTimeout = -1;
+};
+
+exports._unrefActive = exports.active = function(item) {
+  clearTimeout(item._idleTimeoutId);
+
+  var msecs = item._idleTimeout;
+  if (msecs >= 0) {
+    item._idleTimeoutId = setTimeout(function onTimeout() {
+      if (item._onTimeout)
+        item._onTimeout();
+    }, msecs);
+  }
+};
+
+// That's not how node.js implements it but the exposed api is the same.
+exports.setImmediate = typeof setImmediate === "function" ? setImmediate : function(fn) {
+  var id = nextImmediateId++;
+  var args = arguments.length < 2 ? false : slice.call(arguments, 1);
+
+  immediateIds[id] = true;
+
+  nextTick(function onNextTick() {
+    if (immediateIds[id]) {
+      // fn.call() is faster so we optimize for the common use-case
+      // @see http://jsperf.com/call-apply-segu
+      if (args) {
+        fn.apply(null, args);
+      } else {
+        fn.call(null);
+      }
+      // Prevent ids from leaking
+      exports.clearImmediate(id);
+    }
+  });
+
+  return id;
+};
+
+exports.clearImmediate = typeof clearImmediate === "function" ? clearImmediate : function(id) {
+  delete immediateIds[id];
+};
+}).call(this,require("timers").setImmediate,require("timers").clearImmediate)
+},{"process/browser.js":2,"timers":3}],4:[function(require,module,exports){
+(function (setImmediate){
+const Constants = require("../src/Constants");
 const Referee = require("../src/Referee");
 const Player = require("../src/Player");
+const SIMULATIONS = 100000;
+
+let p1 = new Player(), p2 = new Player();
+
+const Grid = Array.from({ length: Constants.MAP_HEIGHT }).map(() => []);
+
+for (let y = 0; y < Constants.MAP_HEIGHT; y++) {
+    for (let x = 0; x < Constants.MAP_WIDTH; x++) {
+        Grid[y].push(0);
+    }
+}
+
+const referee = new Referee(p1, p2);
+
+const TILE_SIZE = 40;
 
 window.onload = async () => {
 
+    let status = document.createElement("h1");
+    let canvas = document.createElement("canvas");
+    let ctx = canvas.getContext("2d");
+
+    canvas.width  = canvas.style.width  = Constants.MAP_WIDTH  * TILE_SIZE;
+    canvas.height = canvas.style.height = Constants.MAP_HEIGHT * TILE_SIZE;
+
+    document.body.appendChild(status);
+    document.body.appendChild(canvas);
+
+    const simulate = i => {
+        referee.reset();
+        referee.grid.cells.forEach(c => Grid[c.y][c.x] += c.ore && 1);
     
-    let p1 = new Player();
-    let p2 = new Player();
+        if (!(i % 1000)) {
+            status.innerHTML = `Running Simulation ${i || 1}`;
+            requestAnimationFrame(() => simulate(i + 1));
+            return;
+        }
+
+        if (i < SIMULATIONS) {
+            setImmediate(() =>simulate(i + 1));
+            return;
+        }
+
+        console.log("Here's the grid if you want to do anything with it (window.grid)", Grid);
+        window.grid = Grid;
     
-    let referee = new Referee(p1, p2);
-    referee.reset();
+        for (let y in Grid) {
+            let row = Grid[y];
+            for (let x in row) {
+                let ore = row[x];
+                let freq = ore / SIMULATIONS;
+                let greyScale = ~~(500 * freq);
+                let color = `rgb(${greyScale},${greyScale},${greyScale})`;
+    
+                ctx.fillStyle = color;
+                ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
 
-    let gui = new GUI(referee);
+                ctx.strokeStyle = "2px black";
+                ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+    
+                ctx.fillStyle = greyScale > 255 / 2 ? "black" : "white";
+                ctx.textAlign = "center";
+                ctx.font = "Arial 14px";
+                ctx.fillText(freq.toFixed(4), x * TILE_SIZE + TILE_SIZE / 2, 
+                    y * TILE_SIZE + TILE_SIZE / 2 + 7);
+            }
+        }
+    }
 
-    await gui.init();
-
-    // referee.start();
+    simulate(0);
 }
-},{"../src/Player":16,"../src/Referee":17,"./gui":2}],4:[function(require,module,exports){
-const TILE_SIZE = 61;
-const Coord = require("../src/Coord");
-
-module.exports = class Tile {
-    
-    /**
-     * @param {import("./gui")} gui
-     * @param {import("../src/Cell")} cell
-     */
-    constructor(gui, cell) {
-        this.gui = gui;
-        this.cell = cell;
-        this.gfx = new PIXI.Graphics();
-        this.gui.tileContainer.addChild(this.gfx);
-
-
-        this.gfx.position.set(this.x * TILE_SIZE, this.y * TILE_SIZE);
-        this.gfx.interactive = true;
-        this.gfx.hitArea = new PIXI.Rectangle(0, 0, TILE_SIZE, TILE_SIZE);
-        this.gfx.on("mousemove", event => {
-            this.gui.tileover(this, event.data.global.x, event.data.global.y);
-        });
-        this.gfx.pivot.set(TILE_SIZE / 2, TILE_SIZE / 2);
-
-        this.update();
-    }
-
-    get x() { return this.cell.x }
-    get y() { return this.cell.y }
-    get game() { return this.gui.referee.game }
-
-    clear() {
-        this.gfx.clear();
-    }
-
-    drawHole() {
-
-    }
-
-    drawFrame() {
-        this.gfx.lineStyle(1, 0);
-        this.gfx.drawRect(0, 0, TILE_SIZE, TILE_SIZE);
-    }
-
-    drawOre() {
-        let sprite = this.gui.getElement("Cristal_2");
-        
-        this.gfx.beginTextureFill(sprite.texture);
-        this.gfx.drawRect(0, 0, TILE_SIZE, TILE_SIZE);
-        this.gfx.endFill();
-        this.gfx.angle = [0, 90, 180, 270][~~(Math.random() * 4)];
-    }
-
-    drawRadar() {
-        this.gfx.beginTextureFill(this.gui.getElement("Radar"));
-        this.gfx.drawRect(0, 0, TILE_SIZE, TILE_SIZE);
-        this.gfx.endFill();
-    }
-
-    update() {
-        this.clear();
-        this.drawFrame();
-
-        // Hole changed
-        if (this.cell.hole) {
-            this.drawHole();
-        }
-
-        if (this.cell.ore) {
-            this.drawOre();
-        }
-
-        // Radar appeared
-        if (this.game.grid.hasRadar(new Coord(this.cell.x, this.cell.y))) {
-            this.drawRadar();
-        }
-
-        // Radar BOOM
-        if (this.lastCell && 
-               !this.game.grid.hasRadar(new Coord(this.lastCell.x, this.lastCell.y)) && 
-                this.game.grid.hasRadar(new Coord(this.cell.x, this.cell.y))) {
-            // this.drawRadar();
-        }
-        
-        this.lastCell = Object.assign({}, this.cell);
-    }
-}
-
-module.exports.SIZE = TILE_SIZE;
-},{"../src/Coord":10}],5:[function(require,module,exports){
+}).call(this,require("timers").setImmediate)
+},{"../src/Constants":9,"../src/Player":16,"../src/Referee":17,"timers":3}],5:[function(require,module,exports){
 const Item = require("./Item");
 
 class Action {
@@ -2371,4 +2329,4 @@ module.exports = class PriorityQueue {
         return this.items.length;
     }
 }
-},{}]},{},[3]);
+},{}]},{},[4]);

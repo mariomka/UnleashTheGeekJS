@@ -9,6 +9,7 @@ window.onload = async () => {
     let p2 = new Player();
     
     let referee = new Referee(p1, p2);
+    referee.reset();
 
     let gui = new GUI(referee);
 
